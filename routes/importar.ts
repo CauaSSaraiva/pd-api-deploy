@@ -6,7 +6,12 @@ import fs from "fs";
 import { prisma } from "../prisma"; // <- usar assim impede mil prisma client gerados, usa só 1
 
 const router = Router();
-const upload = multer({ dest: "uploads" });
+// const upload = multer({ dest: "uploads" });
+
+
+// Adicione a nova configuração para memória
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
 
 interface LinhaProcessada {
   escolaCod: string;
@@ -450,7 +455,8 @@ router.delete("/limpar", async (req, res) => {
 
 
 router.post("/importar", upload.single("arquivo"), async (req, res) => {
-  const filePath = req.file?.path;
+  // const filePath = req.file?.path;
+  const filePath = req.file?.buffer;
   console.log("req.file:", req.file);
   console.log("req.body:", req.body);
   if (!filePath) return res.status(400).send("Arquivo não enviado.");
@@ -537,14 +543,15 @@ router.post("/importar", upload.single("arquivo"), async (req, res) => {
   } catch (error) {
     console.error("Erro fatal na importação:", error);
     res.status(500).send("Erro durante a importação.");
-  } finally {
-    if (filePath) {
-      fs.unlink(
-        filePath,
-        (err) => err && console.error("Erro ao deletar arquivo:", err)
-      );
-    }
   }
+  // } finally {
+  //   if (filePath) {
+  //     fs.unlink(
+  //       filePath,
+  //       (err) => err && console.error("Erro ao deletar arquivo:", err)
+  //     );
+  //   }
+  // }
 });
 
 
