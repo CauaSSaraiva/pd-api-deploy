@@ -1,0 +1,385 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Serie {
+  id     Int          @id @default(autoincrement())
+  descricao   String  @db.VarChar(45)
+  turmas Turma[]
+
+  @@map("series")
+}
+
+model Log {
+  id          Int      @id @default(autoincrement())
+  descricao   String
+  complemento String?
+  identifier  String   // email ou RA do usuário 
+  createdAt   DateTime @default(now())
+  
+  @@map("logs")
+}
+
+model Escola {
+  id     String          @id
+  descricao   String  @db.VarChar(45)
+  turmas Turma[]
+
+  @@map("escolas")
+}
+
+model Disciplina {
+  id       Int          @id @default(autoincrement())
+  codigo   String       @db.VarChar(45) @unique
+  descricao   String  @db.VarChar(45)
+  professorTurmas    ProfessorTurma[]
+
+  @@map("disciplinas")
+}
+
+model Turno {
+  id     Int          @id @default(autoincrement())
+  descricao   String  @db.VarChar(45)
+  turmas Turma[]
+
+
+  @@map("turnos")
+}
+
+model Aluno {
+  id          Int          @id @default(autoincrement())
+  nome        String  @db.VarChar(150)
+  ra          String  @db.VarChar(45) @unique
+  // nascimento  DateTime?  não tem, deveria ter, n tem nos dados
+  senha_hash   String?  @db.VarChar(65)
+  turma        Turma?    @relation(fields: [turmaId], references: [id])
+  turmaId      Int?
+  precisaTrocarSenha Boolean @default(true)
+
+  frequencias Frequencia[]
+  responsaveis AlunoResponsavel[]
+
+
+  @@map("alunos")
+}
+
+model Turma {
+  id     Int          @id @default(autoincrement())
+  nome_display   String  @db.VarChar(45)
+  escola       Escola     @relation(fields: [escola_id], references: [id])
+  escola_id     String
+  serie       Serie     @relation(fields: [serie_id], references: [id])
+  serie_id     Int
+  turno       Turno     @relation(fields: [turno_id], references: [id])
+  turno_id     Int
+  alunos Aluno[]
+  professorTurmas ProfessorTurma[]
+  avisoTurmas AvisoTurma[]
+
+  @@unique([serie_id, turno_id, escola_id], name: "unique_key")
+  @@map("turmas")
+}
+
+model Professor {
+  id     Int          @id @default(autoincrement())
+  nome   String  @db.VarChar(75)
+  // cpf    String  @db.VarChar(45) Não tem, deveria ter n tem nos dados
+  email    String  @db.VarChar(255) @unique
+  codigo    String  @db.VarChar(255) @unique
+  senha_hash   String?  @db.VarChar(65)
+  precisaTrocarSenha Boolean @default(true)
+  professorTurmas    ProfessorTurma[]
+  avisos Aviso[]
+
+  @@map("professores")
+}
+
+model ProfessorTurma {
+  id     Int          @id @default(autoincrement())
+  turma       Turma     @relation(fields: [turma_id], references: [id])
+  turma_id     Int
+  professor   Professor @relation(fields: [professor_id], references: [id])
+  professor_id Int 
+  disciplina   Disciplina @relation(fields: [disciplina_id], references: [id])
+  disciplina_id Int
+
+  aulas Aula[] 
+
+  @@map("professor_turmas")
+  @@unique([professor_id, turma_id, disciplina_id], name: "unique_key")
+}
+
+model Aula {
+  id     Int          @id @default(autoincrement())
+  data   DateTime     @default(now())
+  professorTurma   ProfessorTurma @relation(fields: [professor_turma_id], references: [id])
+  professor_turma_id Int
+  periodo   String  @db.VarChar(65) 
+
+  frequencias Frequencia[]
+
+  @@unique([professor_turma_id, data, periodo], name: "unique_aula_periodo")
+  @@map("aulas")
+}
+
+model Frequencia {
+  id     Int          @id @default(autoincrement())
+  // data   DateTime     @default(now()) nem no diagrama tinha isso, e eu coloquei duplicado saporra
+  aluno   Aluno @relation(fields: [aluno_id], references: [id])
+  aluno_id Int
+  aula   Aula @relation(fields: [aula_id], references: [id])
+  aula_id Int
+  presente Boolean  @default(true) // KKK COMO ESQUECI DESSE CAMPO ATÉ NO DIAGRAMA? PQP KK
+
+  @@map("frequencias")
+  @@unique([aula_id, aluno_id])
+}
+
+model Responsavel {
+  id     Int          @id @default(autoincrement())
+  nome   String  @db.VarChar(75)
+  // cpf    String  @db.VarChar(45) Não tem, deveria ter n tem nos dados
+  // nascimento    DateTime  dado simulado enquanto a escola não da dados dos responsaveis
+  // então n tem porque colocar isso,  pra ficar mais facil de adicionar
+  email    String  @db.VarChar(255) @unique
+  senha_hash   String?  @db.VarChar(65)
+  expo_push_token String? @db.VarChar(255)
+  precisaTrocarSenha Boolean @default(true)
+
+  alunos          AlunoResponsavel[]
+
+
+  @@map("responsaveis")
+}
+
+
+model AlunoResponsavel {
+  id     Int          @id @default(autoincrement())
+  aluno_id       Int
+  responsavel_id Int
+  aluno       Aluno       @relation(fields: [aluno_id], references: [id])
+  responsavel Responsavel @relation(fields: [responsavel_id], references: [id])
+
+  @@map("aluno_responsavel")
+}
+
+
+model Aviso {
+  id           Int         @id @default(autoincrement())
+  titulo       String      @db.VarChar(75)
+  mensagem     String      @db.VarChar(255) @unique
+  data_envio   DateTime    @default(now())
+  imagemBase64 String? @db.Text // Armazena a imagem em base64 
+  professor_id Int
+  professor       Professor       @relation(fields: [professor_id], references: [id])
+  avisoTurmas AvisoTurma[]
+  @@map("avisos")
+}
+
+model AvisoTurma {
+  id     Int          @id @default(autoincrement())
+  aviso_id       Int
+  turma_id Int
+  aviso       Aviso       @relation(fields: [aviso_id], references: [id])
+  turma Turma @relation(fields: [turma_id], references: [id])
+
+  @@map("aviso_turma")
+}
+
+
+
+
+
+
+
+
+
+
+
+
+// model Produto {
+//   id            Int          @id @default(autoincrement())
+//   descricao     String       @db.VarChar(40)
+//   preco         Decimal      @db.Decimal(10, 2)
+//   foto          String
+//   // destaque     Boolean      @default(true)
+//   // createdAt    DateTime     @default(now())
+//   // updatedAt    DateTime     @updatedAt
+//   tipoMaterial  TipoMaterial?
+//   tipoProduto   TipoProduto           @relation(fields: [tipoProdutoId], references: [id])
+//   tipoProdutoId Int
+//   cor           Cor                 @relation(fields: [corId], references: [id])
+//   corId         Int
+//   carrinhos     CarrinhoProduto[]
+
+//   // marca        Marca        @relation(fields: [marcaId], references: [id])
+//   // marcaId      Int
+//   @@map("produtos")
+// }
+
+// model Carrinho {
+//   id            Int          @id @default(autoincrement())
+//   valor         Decimal      @db.Decimal(10, 2)
+//   deleted       Boolean     @default(false)
+//   createdAt     DateTime     @default(now())
+//   cliente       Cliente           @relation(fields: [clienteId], references: [id])
+//   clienteId     String
+//   produtos      CarrinhoProduto[]
+  
+//   @@map("req_carrinho")
+// }
+
+// model CarrinhoProduto {
+//   id          Int       @id @default(autoincrement())
+//   produto     Produto @relation(fields: [produtoId], references: [id])
+//   produtoId   Int
+//   carrinho    Carrinho @relation(fields: [carrinhoId], references: [id])
+//   carrinhoId Int
+//   quantidade Int
+
+//   @@map("carrinho_produtos")
+// }
+
+
+// model TipoProduto {
+//   id         Int         @id @default(autoincrement())
+//   nome       String      @db.VarChar(60)
+//   produtos   Produto[]
+//   @@map("tipo_produtos")
+// }
+
+// model Cliente {
+//   id         String      @id @default(uuid()) @db.VarChar(36)
+//   nome       String      @db.VarChar(60)
+//   email      String      @unique @db.VarChar(60)
+//   senha      String      @db.VarChar(60) // senha deve ser varchar(60)
+//   // telefone   String      @db.VarChar(20)
+//   createdAt  DateTime    @default(now())
+//   updatedAt  DateTime    @updatedAt
+//   // orcamentos Orcamento[]
+//   // carrinhos  Carrinho[]
+
+//   @@map("clientes")
+// }
+
+// model Admin {
+//   id           Int      @id @default(autoincrement())
+//   nome         String   @db.VarChar(60)
+//   email        String   @db.VarChar(60) @unique
+//   senha        String   @db.VarChar(60)   // senha deve ser varchar(60)
+//   createdAt    DateTime @default(now())
+//   updatedAt    DateTime @updatedAt  
+//   @@map("admins")
+// }
+
+// model Orcamento {
+//   id          Int               @id @default(autoincrement())
+//   cliente     Cliente           @relation(fields: [clienteId], references: [id])
+//   clienteId   String
+//   status      String            @default("PENDENTE") @db.VarChar(60)
+//   acabamento  String            @db.VarChar(60)
+//   ambiente    String            @db.VarChar(60)
+//   faixaPreco  String            @db.VarChar(120)
+//   observacoes String            @db.VarChar(255)
+//   prazo       String            @db.VarChar(255)
+//   deleted       Boolean     @default(false)
+//   createdAt   DateTime          @default(now())
+//   updatedAt   DateTime          @updatedAt
+//   itens       ItemOrcamento[]
+//   cores       CorOrcamento[]
+//   imagens     ImagemOrcamento[]
+//   adicionais AdicionalOrcamento[]
+
+//   @@map("orcamentos")
+// }
+
+// model Item {
+//   id         Int             @id @default(autoincrement())
+//   nome       String          @db.VarChar(60)
+//   orcamentos ItemOrcamento[]
+//   @@map("itens")
+// }
+
+// model Cor {
+//   id         Int            @id @default(autoincrement())
+//   nome       String         @db.VarChar(60)
+//   orcamentos CorOrcamento[]
+//   produtos   Produto[]
+
+//   @@map("cores")
+// }
+
+// model Adicional {
+//   id         Int            @id @default(autoincrement())
+//   nome       String         @db.VarChar(60)
+//   orcamentos AdicionalOrcamento[]
+
+//   @@map("adicionais")
+// }
+
+// model AdicionalOrcamento {
+//   id          Int       @id @default(autoincrement())
+//   orcamento   Orcamento @relation(fields: [orcamentoId], references: [id])
+//   orcamentoId Int
+//   adicional   Adicional @relation(fields: [adicionalId], references: [id])
+//   adicionalId Int
+
+//   @@map("orcamento_adicionais")
+// }
+
+// model ItemOrcamento {
+//   id          Int       @id @default(autoincrement())
+//   orcamento   Orcamento @relation(fields: [orcamentoId], references: [id])
+//   orcamentoId Int
+//   item        Item      @relation(fields: [itemId], references: [id])
+//   itemId      Int
+
+//   @@map("orcamento_itens")
+// }
+
+// model CorOrcamento {
+//   id          Int       @id @default(autoincrement())
+//   orcamento   Orcamento @relation(fields: [orcamentoId], references: [id])
+//   orcamentoId Int
+//   cor         Cor       @relation(fields: [corId], references: [id])
+//   corId       Int
+
+//   @@map("orcamento_cores")
+// }
+
+// model ImagemOrcamento {
+//   id            Int       @id @default(autoincrement())
+//   urlReferencia String    @db.VarChar(255) // Armazena o link da imagem gerado pelo Supabase da referencia
+//   urlPlanta     String    @db.VarChar(255) // Armazena o link da imagem gerado pelo Supabase da planta
+//   orcamento     Orcamento @relation(fields: [orcamentoId], references: [id])
+//   orcamentoId   Int // Relacionamento com a tabela Orcamento
+//   uploadedAt    DateTime  @default(now())
+
+//   @@map("imagens_orcamentos")
+// }
+
+
+// enum TipoMaterial {
+//   MADEIRA
+//   MDF
+//   MDP
+//   PEDRA
+//   ESTOFADO
+//   DIVERSOS
+//   // AROMA
+//   // MANTA
+//   // ESPELHO
+// }
+
