@@ -100,7 +100,15 @@ router.get("/", verificaAutenticacao, async (req, res) => {
       },
     });
 
-    res.json(avisos);
+    const resposta = avisos.map((avisoTurma) => ({
+      id: avisoTurma.id,
+      titulo: avisoTurma.titulo,
+      mensagem: avisoTurma.mensagem,
+      data: avisoTurma.data_envio.toISOString(),
+      imagemBase64: avisoTurma.imagemBase64,
+    }));
+
+    res.json(resposta);
   } catch (err) {
     console.error("Erro ao buscar avisos para professores:", err);
     res.status(500).json({ error: "Erro ao buscar avisos." });
