@@ -411,46 +411,46 @@ async function inserirProfessorTurma(
 }
 
 
-router.delete("/limpar", async (req, res) => {
-  // ROTA SÓ PRA LIMPAR O DB SEM TER QUE MIGRAR DE NOVO
-  // PRA PODER TESTAR A FUNÇÃO DE IMPORT E VELOCIDADE
-  await prisma.professorTurma.deleteMany();
-  await prisma.professor.deleteMany();
-  await prisma.aluno.deleteMany();
-  await prisma.turma.deleteMany();
-  await prisma.disciplina.deleteMany();
-  await prisma.serie.deleteMany();
-  await prisma.turma.deleteMany();
-  await prisma.turno.deleteMany();
+// router.delete("/limpar", async (req, res) => {
+//   // ROTA SÓ PRA LIMPAR O DB SEM TER QUE MIGRAR DE NOVO
+//   // PRA PODER TESTAR A FUNÇÃO DE IMPORT E VELOCIDADE
+//   await prisma.professorTurma.deleteMany();
+//   await prisma.professor.deleteMany();
+//   await prisma.aluno.deleteMany();
+//   await prisma.turma.deleteMany();
+//   await prisma.disciplina.deleteMany();
+//   await prisma.serie.deleteMany();
+//   await prisma.turma.deleteMany();
+//   await prisma.turno.deleteMany();
 
-  // reseta os ID, se não o 1° registro é o registro 30 KKK
-  await prisma.$executeRawUnsafe(
-    `TRUNCATE TABLE "series" RESTART IDENTITY CASCADE`
-  );
-  await prisma.$executeRawUnsafe(
-    `TRUNCATE TABLE "turnos" RESTART IDENTITY CASCADE`
-  );
-  await prisma.$executeRawUnsafe(
-    `TRUNCATE TABLE "escolas" RESTART IDENTITY CASCADE`
-  );
-  await prisma.$executeRawUnsafe(
-    `TRUNCATE TABLE "turmas" RESTART IDENTITY CASCADE`
-  );
-  await prisma.$executeRawUnsafe(
-    `TRUNCATE TABLE "disciplinas" RESTART IDENTITY CASCADE`
-  );
-  await prisma.$executeRawUnsafe(
-    `TRUNCATE TABLE "professores" RESTART IDENTITY CASCADE`
-  );
-  await prisma.$executeRawUnsafe(
-    `TRUNCATE TABLE "professor_turmas" RESTART IDENTITY CASCADE`
-  );
-  await prisma.$executeRawUnsafe(
-    `TRUNCATE TABLE "alunos" RESTART IDENTITY CASCADE`
-  );
+//   // reseta os ID, se não o 1° registro é o registro 30 KKK
+//   await prisma.$executeRawUnsafe(
+//     `TRUNCATE TABLE "series" RESTART IDENTITY CASCADE`
+//   );
+//   await prisma.$executeRawUnsafe(
+//     `TRUNCATE TABLE "turnos" RESTART IDENTITY CASCADE`
+//   );
+//   await prisma.$executeRawUnsafe(
+//     `TRUNCATE TABLE "escolas" RESTART IDENTITY CASCADE`
+//   );
+//   await prisma.$executeRawUnsafe(
+//     `TRUNCATE TABLE "turmas" RESTART IDENTITY CASCADE`
+//   );
+//   await prisma.$executeRawUnsafe(
+//     `TRUNCATE TABLE "disciplinas" RESTART IDENTITY CASCADE`
+//   );
+//   await prisma.$executeRawUnsafe(
+//     `TRUNCATE TABLE "professores" RESTART IDENTITY CASCADE`
+//   );
+//   await prisma.$executeRawUnsafe(
+//     `TRUNCATE TABLE "professor_turmas" RESTART IDENTITY CASCADE`
+//   );
+//   await prisma.$executeRawUnsafe(
+//     `TRUNCATE TABLE "alunos" RESTART IDENTITY CASCADE`
+//   );
 
-  res.status(200).send("Limpeza concluida");
-});
+//   res.status(200).send("Limpeza concluida");
+// });
 
 
 

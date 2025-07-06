@@ -87,7 +87,7 @@ router.get("/avisos",verificaAutenticacao, async (req, res) => {
       id: avisoTurma.aviso.id,
       titulo: avisoTurma.aviso.titulo,
       mensagem: avisoTurma.aviso.mensagem,
-      data: avisoTurma.aviso.data_envio,
+      data: avisoTurma.aviso.data_envio.toISOString(),
       turma: avisoTurma.turma.nome_display,
       imagemBase64: avisoTurma.aviso.imagemBase64,
     }));
