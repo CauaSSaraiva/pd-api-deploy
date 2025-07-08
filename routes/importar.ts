@@ -4,6 +4,7 @@ import multer from "multer";
 import bcrypt from "bcrypt";
 import fs from "fs";
 import { prisma } from "../prisma"; // <- usar assim impede mil prisma client gerados, usa só 1
+import { basePrisma } from "../prisma";
 
 const router = Router();
 // const upload = multer({ dest: "uploads" });
@@ -445,7 +446,10 @@ async function upsertProfessorTurma(
   turmasMap: Map<string, any>,
   disciplinasMap: Map<string, any>
 ): Promise<void> {
-  if (professorTurmas.length === 0) return;
+  if (professorTurmas.length === 0) {
+    console.log("DEBUG: professorTurmas está vazio, retornando.");
+    return;
+  }
 
   const dados = professorTurmas
     .map((key) => {
@@ -458,7 +462,7 @@ async function upsertProfessorTurma(
       );
 
       const profEmail = emailETurma.substring(0, primeiroHifenAposArroba);
-      const turmaKey = emailETurma.substring(primeiroHifenAposArroba + 1);
+      const turmaKey = emailETurma.substring(primeiroHifenAposArroba + 1); // Corrigido novamente aqui caso tenha sido digitado errado antes
 
       const professor = professoresMap.get(profEmail);
       const turma = turmasMap.get(turmaKey);
@@ -471,12 +475,17 @@ async function upsertProfessorTurma(
             disciplina_id: disciplina.id,
             profEmail,
             chaveUnica: `${professor.id}-${turma.id}-${disciplina.id}`, // Para comparação
+            // Inclua a chave original do arquivo para facilitar o rastreamento
+            originalKey: key,
           }
         : null;
     })
     .filter((item): item is NonNullable<typeof item> => item !== null);
 
-  if (dados.length === 0) return;
+  if (dados.length === 0) {
+    console.log("DEBUG: Array 'dados' está vazio após filtragem, retornando.");
+    return;
+  }
 
   // Agrupar por professor
   const porProfessor = dados.reduce((acc, d) => {
@@ -487,12 +496,15 @@ async function upsertProfessorTurma(
 
   // Para cada professor, gerenciar suas turmas
   for (const [email, relacionamentos] of Object.entries(porProfessor)) {
+    console.log(
+      `DEBUG: Processando professor: ${email} com ${relacionamentos.length} relacionamentos do arquivo.`
+    );
     if (relacionamentos.length === 0) continue;
 
     const professorId = relacionamentos[0].professor_id;
 
     // Buscar relacionamentos existentes do professor (incluindo soft deleted)
-    const existentes = await prisma.professorTurma.findMany({
+    const existentes = await basePrisma.professorTurma.findMany({
       where: { professor_id: professorId },
       select: {
         id: true,
@@ -502,21 +514,43 @@ async function upsertProfessorTurma(
         ativo: true,
       },
     });
+    // console.log(
+    //   `DEBUG: Encontrados ${existentes.length} registros existentes no DB para o professor ${email}.`
+    // );
 
-    // Criar map dos relacionamentos que devem existir
+    // Criar Set das chaves que DEVERIAM existir (vindos do arquivo)
     const chavesNovas = new Set(relacionamentos.map((r) => r.chaveUnica));
-    const chavesExistentes = new Map(
+    // console.log(
+    //   `DEBUG: Chaves do arquivo (chavesNovas) para o professor ${email}:`,
+    //   Array.from(chavesNovas)
+    // );
+
+    // Criar Map dos relacionamentos existentes no BD para fácil consulta
+    const chavesExistentesDoBancoMap = new Map(
       existentes.map((e) => [
         `${e.professor_id}-${e.turma_id}-${e.disciplina_id}`,
         e,
       ])
     );
 
+    // o problema era o maldito middleware do client prisma, NEM FERRANDO CARA KKKKKKKKKKKK
+    // console.log("DEBUG: EXISTENTES (do banco):");
+    // existentes.forEach((e) =>
+    //   console.log(
+    //     `  - ${e.professor_id}-${e.turma_id}-${e.disciplina_id} (Ativo: ${e.ativo})`
+    //   )
+    // );
+
+    // console.log("DEBUG: RELACIONAMENTOS (do arquivo):");
+    // relacionamentos.forEach((r) =>
+    //   console.log(`  - ${r.chaveUnica} (original: ${r.originalKey})`)
+    // );
+
     // 1. Reativar relacionamentos que existem no arquivo mas estão soft deleted
     const paraReativar = existentes.filter(
       (e) =>
-        !e.ativo &&
-        chavesNovas.has(`${e.professor_id}-${e.turma_id}-${e.disciplina_id}`)
+        !e.ativo && // Se está inativo no banco DE DADOS
+        chavesNovas.has(`${e.professor_id}-${e.turma_id}-${e.disciplina_id}`) // E a chave correspondente está no ARQUIVO
     );
 
     if (paraReativar.length > 0) {
@@ -531,22 +565,21 @@ async function upsertProfessorTurma(
         },
       });
     }
-
     // 2. Soft delete relacionamentos que não existem mais no arquivo
     const paraSoftDelete = existentes.filter(
       (e) =>
-        e.ativo &&
-        !chavesNovas.has(`${e.professor_id}-${e.turma_id}-${e.disciplina_id}`)
+        e.ativo && // Se está ativo no banco DE DADOS
+        !chavesNovas.has(`${e.professor_id}-${e.turma_id}-${e.disciplina_id}`) // E a chave NÃO está no ARQUIVO
     );
 
     if (paraSoftDelete.length > 0) {
-      // Soft delete em cascata
       await softDeleteProfessorTurmasCascata(paraSoftDelete.map((p) => p.id));
+    } else {
     }
 
     // 3. Criar novos relacionamentos que não existem
     const novosRelacionamentos = relacionamentos.filter(
-      (r) => !chavesExistentes.has(r.chaveUnica)
+      (r) => !chavesExistentesDoBancoMap.has(r.chaveUnica) // Se a chave do arquivo NÃO existe no banco (nem ativo, nem inativo)
     );
 
     if (novosRelacionamentos.length > 0) {
@@ -561,7 +594,10 @@ async function upsertProfessorTurma(
       });
     }
   }
+  console.log(`DEBUG: upsertProfessorTurma finalizado.`);
 }
+
+
 
 // Função auxiliar para soft delete em cascata
 async function softDeleteProfessorTurmasCascata(
