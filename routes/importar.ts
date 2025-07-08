@@ -55,13 +55,78 @@ async function processarBatchOtimizado(
   // 4. alunos e professorTurma em paralelo
   await Promise.all([
     upsertAlunos(dadosUnicos.alunos, turmasMap, senhaHash),
-    inserirProfessorTurma(
-      dadosUnicos.professorTurmas,
-      professoresMap,
-      turmasMap,
-      disciplinasMap
-    ),
+    // inserirProfessorTurma(
+    //   dadosUnicos.professorTurmas,
+    //   professoresMap,
+    //   turmasMap,
+    //   disciplinasMap
+    // ),
   ]);
+}
+
+async function processarProfessorTurmaFinal(
+  todosOsDados: LinhaProcessada[],
+  senhaHash: string
+): Promise<void> {
+  const dadosUnicos = extrairDadosUnicos(todosOsDados);
+
+  // Buscar mapas necessários
+  const [disciplinasMap, professoresMap] = await Promise.all([
+    buscarDisciplinasMap(dadosUnicos.disciplinas),
+    buscarProfessoresMap(dadosUnicos.professores),
+  ]);
+
+  const turmasMap = await buscarTurmasMap(dadosUnicos.turmas);
+
+  // Agora sim, substituir relacionamentos
+  await upsertProfessorTurma(
+    dadosUnicos.professorTurmas,
+    professoresMap,
+    turmasMap,
+    disciplinasMap
+  );
+}
+
+// Funções auxiliares para buscar dados existentes
+async function buscarDisciplinasMap(
+  disciplinas: { codigo: string; descricao: string }[]
+): Promise<Map<string, any>> {
+  const codigos = disciplinas.map((d) => d.codigo);
+  const todas = await prisma.disciplina.findMany({
+    where: { codigo: { in: codigos } },
+  });
+  return new Map(todas.map((d) => [d.codigo, d]));
+}
+
+async function buscarProfessoresMap(
+  professores: { email: string }[]
+): Promise<Map<string, any>> {
+  const emails = professores.map((p) => p.email);
+  const todos = await prisma.professor.findMany({
+    where: { email: { in: emails } },
+  });
+  return new Map(todos.map((p) => [p.email, p]));
+}
+
+async function buscarTurmasMap(
+  turmas: { serie: number; turno: number; escola: string }[]
+): Promise<Map<string, any>> {
+  const todas = await prisma.turma.findMany({
+    where: {
+      OR: turmas.map((t) => ({
+        serie_id: t.serie,
+        turno_id: t.turno,
+        escola_id: t.escola,
+      })),
+    },
+  });
+
+  const map = new Map<string, any>();
+  for (const t of todas) {
+    const key = `${t.serie_id}-${t.turno_id}-${t.escola_id}`;
+    map.set(key, t);
+  }
+  return map;
 }
 
 
@@ -374,7 +439,7 @@ async function upsertAlunos(
 }
 
 // Insert otimizado para professor_turma (jesus essa aqui)
-async function inserirProfessorTurma(
+async function upsertProfessorTurma(
   professorTurmas: string[],
   professoresMap: Map<string, any>,
   turmasMap: Map<string, any>,
@@ -384,32 +449,113 @@ async function inserirProfessorTurma(
 
   const dados = professorTurmas
     .map((key) => {
-      const ultimoHifen = key.lastIndexOf('-');
+      const ultimoHifen = key.lastIndexOf("-");
       const disciplinaCod = key.substring(ultimoHifen + 1);
       const emailETurma = key.substring(0, ultimoHifen);
-      const primeiroHifenAposArroba = emailETurma.indexOf('-', emailETurma.indexOf('@'));
-      
+      const primeiroHifenAposArroba = emailETurma.indexOf(
+        "-",
+        emailETurma.indexOf("@")
+      );
+
       const profEmail = emailETurma.substring(0, primeiroHifenAposArroba);
       const turmaKey = emailETurma.substring(primeiroHifenAposArroba + 1);
-      
+
       const professor = professoresMap.get(profEmail);
       const turma = turmasMap.get(turmaKey);
       const disciplina = disciplinasMap.get(disciplinaCod);
-      
-      return professor && turma && disciplina 
-        ? { professor_id: professor.id, turma_id: turma.id, disciplina_id: disciplina.id }
+
+      return professor && turma && disciplina
+        ? {
+            professor_id: professor.id,
+            turma_id: turma.id,
+            disciplina_id: disciplina.id,
+            profEmail, // manter email para agrupamento
+          }
         : null;
     })
-    .filter((item): item is NonNullable<typeof item> => item !== null);
+    .filter(
+      (
+        item
+      ): item is {
+        professor_id: any;
+        turma_id: any;
+        disciplina_id: any;
+        profEmail: string;
+      } => item !== null
+    );
 
-  if (dados.length > 0) {
+  if (dados.length === 0) return;
+
+  // Agrupar por professor
+  const porProfessor = dados.reduce((acc, d) => {
+    if (!acc[d.profEmail]) acc[d.profEmail] = [];
+    acc[d.profEmail].push(d);
+    return acc;
+  }, {} as Record<string, typeof dados>);
+
+  // Para cada professor, substituir suas turmas
+  for (const [email, relacionamentos] of Object.entries(porProfessor)) {
+    const professorId = relacionamentos[0].professor_id;
+
+    // 1. Primeiro, buscar todos os professor_turma_id deste professor
+    const professorTurmasExistentes = await prisma.professorTurma.findMany({
+      where: { professor_id: professorId },
+      select: { id: true }
+    });
+
+    const professorTurmaIds = professorTurmasExistentes.map(pt => pt.id);
+
+    // 2. Deletar todas as dependências em cascata
+    if (professorTurmaIds.length > 0) {
+      // 2.1. Primeiro buscar todas as aulas deste professor
+      const aulas = await prisma.aula.findMany({
+        where: {
+          professor_turma_id: {
+            in: professorTurmaIds
+          }
+        },
+        select: { id: true }
+      });
+
+      const aulaIds = aulas.map(aula => aula.id);
+
+      // 2.2. Deletar todas as frequências relacionadas às aulas
+      if (aulaIds.length > 0) {
+        await prisma.frequencia.deleteMany({
+          where: {
+            aula_id: {
+              in: aulaIds
+            }
+          }
+        });
+      }
+
+ 
+      await prisma.aula.deleteMany({
+        where: {
+          professor_turma_id: {
+            in: professorTurmaIds
+          }
+        }
+      });
+    }
+
+    // 3. Agora deletar os relacionamentos antigos deste professor
+    await prisma.professorTurma.deleteMany({
+      where: { professor_id: professorId },
+    });
+
+    // 4. Criar os novos relacionamentos
     await prisma.professorTurma.createMany({
-      data: dados,
-      skipDuplicates: true
+      data: relacionamentos.map((r) => ({
+        professor_id: r.professor_id,
+        turma_id: r.turma_id,
+        disciplina_id: r.disciplina_id,
+      })),
+      skipDuplicates: true,
     });
   }
 }
-
 
 // router.delete("/limpar", async (req, res) => {
 //   // ROTA SÓ PRA LIMPAR O DB SEM TER QUE MIGRAR DE NOVO
@@ -467,7 +613,9 @@ router.post("/importar", upload.single("arquivo"), async (req, res) => {
 
     const senhaHash = await gerarHash();
 
-    const BATCH_TAMANHO = 25;
+    let todosOsDados: LinhaProcessada[] = [];
+
+    const BATCH_TAMANHO = 350;
     let batchAtual: LinhaProcessada[] = [];
 
     let contadorSucesso = 0;
@@ -514,6 +662,19 @@ router.post("/importar", upload.single("arquivo"), async (req, res) => {
           profNome,
           profEmail,
         });
+
+        todosOsDados.push({
+          escolaCod,
+          raAluno,
+          nomeAluno,
+          serie,
+          turno,
+          disciplinaCod,
+          disciplinaNome,
+          profCod,
+          profNome,
+          profEmail,
+        });
         
         if (batchAtual.length >= BATCH_TAMANHO || i === linhas.length - 1) {
           console.log(`Processando batch de ${batchAtual.length} itens...`);
@@ -532,6 +693,8 @@ router.post("/importar", upload.single("arquivo"), async (req, res) => {
         contadorFalhas++;
       }
     }
+
+    await processarProfessorTurmaFinal(todosOsDados, senhaHash);
 
     // mais detalhado agr
     res.status(200).json({
