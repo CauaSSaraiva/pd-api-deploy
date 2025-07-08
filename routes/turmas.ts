@@ -34,6 +34,7 @@ router.get("/:id", async (req, res) => {
         professorTurmas: {
           some: {
             professor_id: Number(professorId),
+            ativo: true
           },
         },
       },
