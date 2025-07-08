@@ -469,20 +469,12 @@ async function upsertProfessorTurma(
             professor_id: professor.id,
             turma_id: turma.id,
             disciplina_id: disciplina.id,
-            profEmail, // manter email para agrupamento
+            profEmail,
+            chaveUnica: `${professor.id}-${turma.id}-${disciplina.id}`, // Para comparação
           }
         : null;
     })
-    .filter(
-      (
-        item
-      ): item is {
-        professor_id: any;
-        turma_id: any;
-        disciplina_id: any;
-        profEmail: string;
-      } => item !== null
-    );
+    .filter((item): item is NonNullable<typeof item> => item !== null);
 
   if (dados.length === 0) return;
 
@@ -493,69 +485,142 @@ async function upsertProfessorTurma(
     return acc;
   }, {} as Record<string, typeof dados>);
 
-  // Para cada professor, substituir suas turmas
+  // Para cada professor, gerenciar suas turmas
   for (const [email, relacionamentos] of Object.entries(porProfessor)) {
+    if (relacionamentos.length === 0) continue;
+
     const professorId = relacionamentos[0].professor_id;
 
-    // 1. Primeiro, buscar todos os professor_turma_id deste professor
-    const professorTurmasExistentes = await prisma.professorTurma.findMany({
+    // Buscar relacionamentos existentes do professor (incluindo soft deleted)
+    const existentes = await prisma.professorTurma.findMany({
       where: { professor_id: professorId },
-      select: { id: true }
+      select: {
+        id: true,
+        professor_id: true,
+        turma_id: true,
+        disciplina_id: true,
+        ativo: true,
+      },
     });
 
-    const professorTurmaIds = professorTurmasExistentes.map(pt => pt.id);
+    // Criar map dos relacionamentos que devem existir
+    const chavesNovas = new Set(relacionamentos.map((r) => r.chaveUnica));
+    const chavesExistentes = new Map(
+      existentes.map((e) => [
+        `${e.professor_id}-${e.turma_id}-${e.disciplina_id}`,
+        e,
+      ])
+    );
 
-    // 2. Deletar todas as dependências em cascata
-    if (professorTurmaIds.length > 0) {
-      // 2.1. Primeiro buscar todas as aulas deste professor
-      const aulas = await prisma.aula.findMany({
+    // 1. Reativar relacionamentos que existem no arquivo mas estão soft deleted
+    const paraReativar = existentes.filter(
+      (e) =>
+        !e.ativo &&
+        chavesNovas.has(`${e.professor_id}-${e.turma_id}-${e.disciplina_id}`)
+    );
+
+    if (paraReativar.length > 0) {
+      await prisma.professorTurma.updateMany({
         where: {
-          professor_turma_id: {
-            in: professorTurmaIds
-          }
+          id: { in: paraReativar.map((p) => p.id) },
         },
-        select: { id: true }
-      });
-
-      const aulaIds = aulas.map(aula => aula.id);
-
-      // 2.2. Deletar todas as frequências relacionadas às aulas
-      if (aulaIds.length > 0) {
-        await prisma.frequencia.deleteMany({
-          where: {
-            aula_id: {
-              in: aulaIds
-            }
-          }
-        });
-      }
-
- 
-      await prisma.aula.deleteMany({
-        where: {
-          professor_turma_id: {
-            in: professorTurmaIds
-          }
-        }
+        data: {
+          ativo: true,
+          deletado_em: null,
+          atualizado_em: new Date(),
+        },
       });
     }
 
-    // 3. Agora deletar os relacionamentos antigos deste professor
-    await prisma.professorTurma.deleteMany({
-      where: { professor_id: professorId },
-    });
+    // 2. Soft delete relacionamentos que não existem mais no arquivo
+    const paraSoftDelete = existentes.filter(
+      (e) =>
+        e.ativo &&
+        !chavesNovas.has(`${e.professor_id}-${e.turma_id}-${e.disciplina_id}`)
+    );
 
-    // 4. Criar os novos relacionamentos
-    await prisma.professorTurma.createMany({
-      data: relacionamentos.map((r) => ({
-        professor_id: r.professor_id,
-        turma_id: r.turma_id,
-        disciplina_id: r.disciplina_id,
-      })),
-      skipDuplicates: true,
-    });
+    if (paraSoftDelete.length > 0) {
+      // Soft delete em cascata
+      await softDeleteProfessorTurmasCascata(paraSoftDelete.map((p) => p.id));
+    }
+
+    // 3. Criar novos relacionamentos que não existem
+    const novosRelacionamentos = relacionamentos.filter(
+      (r) => !chavesExistentes.has(r.chaveUnica)
+    );
+
+    if (novosRelacionamentos.length > 0) {
+      await prisma.professorTurma.createMany({
+        data: novosRelacionamentos.map((r) => ({
+          professor_id: r.professor_id,
+          turma_id: r.turma_id,
+          disciplina_id: r.disciplina_id,
+          ativo: true,
+        })),
+        skipDuplicates: true,
+      });
+    }
   }
 }
+
+// Função auxiliar para soft delete em cascata
+async function softDeleteProfessorTurmasCascata(
+  professorTurmaIds: number[]
+): Promise<void> {
+  const agora = new Date();
+
+  // 1. Buscar todas as aulas ativas destes professor_turma
+  const aulas = await prisma.aula.findMany({
+    where: {
+      professor_turma_id: { in: professorTurmaIds },
+      ativo: true,
+    },
+    select: { id: true },
+  });
+
+  const aulaIds = aulas.map((a) => a.id);
+
+  // 2. Soft delete das frequências
+  if (aulaIds.length > 0) {
+    await prisma.frequencia.updateMany({
+      where: {
+        aula_id: { in: aulaIds },
+        ativo: true,
+      },
+      data: {
+        ativo: false,
+        deletado_em: agora,
+      },
+    });
+  }
+
+  // 3. Soft delete das aulas
+  if (aulaIds.length > 0) {
+    await prisma.aula.updateMany({
+      where: {
+        id: { in: aulaIds },
+        ativo: true,
+      },
+      data: {
+        ativo: false,
+        deletado_em: agora,
+      },
+    });
+  }
+
+  // 4. Soft delete dos professor_turma
+  await prisma.professorTurma.updateMany({
+    where: {
+      id: { in: professorTurmaIds },
+      ativo: true,
+    },
+    data: {
+      ativo: false,
+      deletado_em: agora,
+    },
+  });
+}
+
 
 // router.delete("/limpar", async (req, res) => {
 //   // ROTA SÓ PRA LIMPAR O DB SEM TER QUE MIGRAR DE NOVO

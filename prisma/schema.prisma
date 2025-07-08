@@ -117,6 +117,12 @@ model ProfessorTurma {
 
   aulas Aula[] 
 
+      // Campos para soft delete
+  ativo         Boolean      @default(true)
+  deletado_em   DateTime?
+  criado_em     DateTime     @default(now())
+  atualizado_em DateTime     @updatedAt
+
   @@map("professor_turmas")
   @@unique([professor_id, turma_id, disciplina_id], name: "unique_key")
 }
@@ -130,6 +136,12 @@ model Aula {
 
   frequencias Frequencia[]
 
+      // Campos para soft delete
+  ativo         Boolean      @default(true)
+  deletado_em   DateTime?
+  criado_em     DateTime     @default(now())
+  atualizado_em DateTime     @updatedAt
+
   @@unique([professor_turma_id, data, periodo], name: "unique_aula_periodo")
   @@map("aulas")
 }
@@ -142,6 +154,12 @@ model Frequencia {
   aula   Aula @relation(fields: [aula_id], references: [id])
   aula_id Int
   presente Boolean  @default(true) // KKK COMO ESQUECI DESSE CAMPO ATÉ NO DIAGRAMA? PQP KK
+
+      // Campos para soft delete
+  ativo         Boolean      @default(true)
+  deletado_em   DateTime?
+  criado_em     DateTime     @default(now())
+  atualizado_em DateTime     @updatedAt
 
   @@map("frequencias")
   @@unique([aula_id, aluno_id])
