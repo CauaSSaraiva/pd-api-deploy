@@ -673,7 +673,10 @@ router.post("/importar", upload.single("arquivo"), async (req, res) => {
   if (!filePath) return res.status(400).send("Arquivo não enviado.");
 
   try {
-    const fileConteudo = await fs.promises.readFile(filePath, "utf-8");
+    // const fileConteudo = await fs.promises.readFile(filePath, "utf-8");
+    if (!req.file) return res.status(400).send("Arquivo não enviado ou inválido.");
+
+    const fileConteudo = req.file?.buffer.toString("utf-8");
     const linhas = fileConteudo.split("\n");
 
     const senhaHash = await gerarHash();
