@@ -46,10 +46,15 @@ router.post("/chamada", verificaAutenticacao, async (req, res) => {
     // então, se tiver mais de uma aula no mesmo dia, usa o campo "periodo" pra diferenciar
     // e usa a data sem hora pra atualizar a chamada corretamente
 
-    // console.log(`data recebida: ${data}`);
+    // Recebe: "2025-07-09 15:20:13"
+    console.log("Data recebida:", data);
 
-    const dataStr = data.split("T")[0];
-    const dataBr = new Date(dataStr + "T00:00:00.000Z");
+    // Método 1: Usar apenas a parte da data (mais seguro)
+    const dataSemHora = data.split(" ")[0]; // "2025-07-09"
+    const dataBr = new Date(dataSemHora + "T00:00:00.000Z");
+
+    console.log("Data processada:", dataBr);
+    console.log("Data é válida:", !isNaN(dataBr.getTime()));
 
     //  Busca aula existente ou cria nova
     let aula = await prisma.aula.findUnique({
