@@ -41,7 +41,7 @@ router.post("/chamada", verificaAutenticacao, async (req, res) => {
 
     // Ajusta a data para o fuso
     const dataBr = new Date(data);
-    dataBr.setHours(dataBr.getHours() - 3);
+    // dataBr.setHours(dataBr.getHours() - 3);
     dataBr.setHours(0, 0, 0, 0); // agr evita chamada duplicada no mesmo dia usando unique composto (periodo, data, professor_turma_id)
     // então, se tiver mais de uma aula no mesmo dia, usa o campo "periodo" pra diferenciar
     // e usa a data sem hora pra atualizar a chamada corretamente
