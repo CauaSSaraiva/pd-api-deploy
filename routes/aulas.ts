@@ -41,11 +41,28 @@ router.post("/chamada", verificaAutenticacao, async (req, res) => {
     }
 
     // Ajusta a data para o fuso
-    const dataBr = new Date(data);
-    dataBr.setHours(dataBr.getHours() - 3);
-    dataBr.setHours(0, 0, 0, 0); // agr evita chamada duplicada no mesmo dia usando unique composto (periodo, data, professor_turma_id)
-    // então, se tiver mais de uma aula no mesmo dia, usa o campo "periodo" pra diferenciar
-    // e usa a data sem hora pra atualizar a chamada corretamente
+    // const dataBr = new Date(data);
+    // dataBr.setHours(dataBr.getHours() - 3);
+    // dataBr.setHours(0, 0, 0, 0); // agr evita chamada duplicada no mesmo dia usando unique composto (periodo, data, professor_turma_id)
+    // // então, se tiver mais de uma aula no mesmo dia, usa o campo "periodo" pra diferenciar
+    // // e usa a data sem hora pra atualizar a chamada corretamente
+    // console.log(`data recebida: ${data}`);
+
+    function parseDateFromISOWithTime(str: string): Date {
+      // Substitui o espaço por "T" para que o new Date() aceite
+      const dateISO = str.replace(" ", "T");
+      const date = new Date(dateISO);
+
+      if (isNaN(date.getTime())) {
+        throw new Error(`Data inválida recebida: "${str}"`);
+      }
+
+      date.setHours(date.getHours() - 3);
+      return date;
+    }
+
+    const dataBr = parseDateFromISOWithTime(data); // converte a data do formato brasileiro para Date
+    // console.log(`data convertida: ${dataBr}`);
 
     //  Busca aula existente ou cria nova
     let aula = await prisma.aula.findUnique({
@@ -82,8 +99,6 @@ router.post("/chamada", verificaAutenticacao, async (req, res) => {
         },
       });
     }
-
-
 
     // Cria novos registros de frequência
     const registros = presencas.map((p) => ({
