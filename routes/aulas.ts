@@ -58,6 +58,7 @@ router.post("/chamada", verificaAutenticacao, async (req, res) => {
       }
 
       date.setHours(date.getHours() - 3);
+      date.setHours(0, 0, 0, 0); // PRA COMPARAÇÃO
       return date;
     }
 
