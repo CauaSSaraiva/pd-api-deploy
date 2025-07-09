@@ -256,11 +256,18 @@ function extrairDadosUnicos(batch: LinhaProcessada[]) {
 
 // createmany das series otimizado
 async function inserirSeries(series: number[]): Promise<Map<number, any>> {
-  const criados = await prisma.serie.createManyAndReturn({
-    data: series.map((id) => ({ id, descricao: `${id}º ano` })),
-    skipDuplicates: true,
+  const data = series.map((id) => {
+    const anoReal = 10 - id;
+    return {
+      id,
+      descricao: `${anoReal}º ano`,
+    };
   });
 
+  const criados = await prisma.serie.createManyAndReturn({
+    data,
+    skipDuplicates: true,
+  });
 
   return new Map(criados.map((s) => [s.id, s]));
 }
@@ -355,11 +362,15 @@ async function upsertProfessores(
   return new Map(todosProfessores.map((p) => [p.email, p]));
 }
 
+function descricaoSerie(id: number): string {
+  return `${10 - id}º ano`;
+}
+
 async function inserirTurmas(
   turmas: { serie: number; turno: number; escola: string; key: string }[]
 ): Promise<Map<string, any>> {
   const dadosParaCriar = turmas.map((t) => ({
-    nome_display: `${t.serie}º ano - ${t.turno === 1 ? "Manhã" : "Tarde"}`,
+    nome_display: descricaoSerie(t.serie) + ` - ${t.turno === 1 ? "Manhã" : "Tarde"}`,
     serie_id: t.serie,
     turno_id: t.turno,
     escola_id: t.escola,
