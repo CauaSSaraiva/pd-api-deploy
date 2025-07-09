@@ -1,11 +1,10 @@
 // import { PrismaClient } from "@prisma/client"
-import { Router } from "express"
+import { Router } from "express";
 import { verificaAutenticacao } from "../middlewares/verificaToken";
 
-
 import { prisma } from "../prisma";
-const router = Router()
-
+import { parse } from "path";
+const router = Router();
 
 router.post("/chamada", verificaAutenticacao, async (req, res) => {
   const { turmaId, disciplinaId, data, periodo, presencas } = req.body;
@@ -40,15 +39,14 @@ router.post("/chamada", verificaAutenticacao, async (req, res) => {
       });
     }
 
+    // Ajusta a data para o fuso
     const dataBr = new Date(data);
     dataBr.setHours(dataBr.getHours() - 3);
     dataBr.setHours(0, 0, 0, 0); // agr evita chamada duplicada no mesmo dia usando unique composto (periodo, data, professor_turma_id)
     // então, se tiver mais de uma aula no mesmo dia, usa o campo "periodo" pra diferenciar
     // e usa a data sem hora pra atualizar a chamada corretamente
+
     // console.log(`data recebida: ${data}`);
-
-
-
 
     //  Busca aula existente ou cria nova
     let aula = await prisma.aula.findUnique({
@@ -128,9 +126,9 @@ router.post("/chamada", verificaAutenticacao, async (req, res) => {
                 title: `Falta registrada: ${alunoComResponsaveis.nome}`,
                 body: `Seu filho(a) ${
                   alunoComResponsaveis.nome
-                } faltou no dia ${new Date(
-                  data
-                ).toLocaleDateString()} (${periodo})`,
+                } faltou no dia ${new Date(data).toLocaleDateString(
+                  "pt-BR"
+                )} (${periodo})`,
               }),
             });
           } else {
@@ -262,5 +260,4 @@ router.post("/chamada", verificaAutenticacao, async (req, res) => {
 //   }
 // });
 
-  
 export default router;
