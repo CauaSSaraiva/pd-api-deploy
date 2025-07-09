@@ -40,13 +40,16 @@ router.post("/chamada", verificaAutenticacao, async (req, res) => {
     }
 
     // Ajusta a data para o fuso
-    const dataBr = new Date(data);
-    // dataBr.setHours(dataBr.getHours() - 3);
-    dataBr.setHours(0, 0, 0, 0); // agr evita chamada duplicada no mesmo dia usando unique composto (periodo, data, professor_turma_id)
+    // const dataBr = new Date(data);
+    // // dataBr.setHours(dataBr.getHours() - 3);
+    // dataBr.setHours(0, 0, 0, 0); // agr evita chamada duplicada no mesmo dia usando unique composto (periodo, data, professor_turma_id)
     // então, se tiver mais de uma aula no mesmo dia, usa o campo "periodo" pra diferenciar
     // e usa a data sem hora pra atualizar a chamada corretamente
 
     // console.log(`data recebida: ${data}`);
+
+    const dataStr = data.split("T")[0];
+    const dataBr = new Date(dataStr + "T00:00:00.000Z");
 
     //  Busca aula existente ou cria nova
     let aula = await prisma.aula.findUnique({
